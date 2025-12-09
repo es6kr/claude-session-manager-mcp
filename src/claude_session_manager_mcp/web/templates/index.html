@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code History Viewer</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #252526;
+            --bg-tertiary: #2d2d30;
+            --text-primary: #cccccc;
+            --text-secondary: #858585;
+            --accent: #0078d4;
+            --accent-hover: #1a8cff;
+            --border: #3c3c3c;
+            --user-bg: #264f78;
+            --assistant-bg: #2d2d30;
+            --success: #4ec9b0;
+            --warning: #dcdcaa;
+            --error: #f14c4c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-header h1 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-header h1 i {
+            color: var(--accent);
+        }
+
+        .search-box {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .project-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .project-item {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .project-header {
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s;
+        }
+
+        .project-header:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .project-header.active {
+            background: var(--bg-tertiary);
+        }
+
+        .project-header i {
+            color: var(--text-secondary);
+            font-size: 12px;
+            transition: transform 0.15s;
+        }
+
+        .project-header.expanded i {
+            transform: rotate(90deg);
+        }
+
+        .project-name {
+            font-size: 13px;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .session-count {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .session-list {
+            display: none;
+            background: var(--bg-primary);
+        }
+
+        .session-list.visible {
+            display: block;
+        }
+
+        .session-item {
+            padding: 10px 16px 10px 32px;
+            cursor: pointer;
+            border-left: 2px solid transparent;
+            transition: all 0.15s;
+        }
+
+        .session-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .session-item.active {
+            background: var(--bg-tertiary);
+            border-left-color: var(--accent);
+        }
+
+        .session-title {
+            font-size: 12px;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+
+        .session-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .content-header h2 {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .header-actions button {
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s;
+        }
+
+        .header-actions button:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .header-actions button.danger:hover {
+            background: var(--error);
+            border-color: var(--error);
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            max-width: 900px;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .message-role {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .message-role.user {
+            background: var(--user-bg);
+            color: #fff;
+        }
+
+        .message-role.assistant {
+            background: var(--success);
+            color: #000;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .message-model {
+            font-size: 11px;
+            color: var(--warning);
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .message.user .message-content {
+            background: var(--user-bg);
+            border-color: var(--user-bg);
+        }
+
+        .tool-use {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            font-size: 12px;
+            border-left: 3px solid var(--warning);
+        }
+
+        .tool-use-name {
+            color: var(--warning);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .tool-use-input {
+            color: var(--text-secondary);
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            max-height: 100px;
+            overflow: auto;
+        }
+
+        /* Empty state */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border);
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            color: var(--text-secondary);
+        }
+
+        .loading i {
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Code blocks */
+        .message-content code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+        }
+
+        .message-content pre {
+            background: var(--bg-primary);
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .message-content pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 480px;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .modal-footer button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+        }
+
+        .modal-footer button.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .modal-footer button.primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .modal-footer button.secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .clear-option {
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+
+        .clear-option label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .clear-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .clear-count {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        .clear-description {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            margin-left: 24px;
+        }
+
+        /* Sidebar footer */
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .sidebar-footer button {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.15s;
+        }
+
+        .sidebar-footer button:hover {
+            background: var(--warning);
+            border-color: var(--warning);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1><i class="fas fa-robot"></i> Claude History</h1>
+        </div>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search conversations...">
+        </div>
+        <div class="project-list" id="projectList">
+            <div class="loading"><i class="fas fa-spinner"></i> Loading projects...</div>
+        </div>
+        <div class="sidebar-footer">
+            <button id="clearBtn" onclick="openClearModal()">
+                <i class="fas fa-broom"></i> Clear Empty Sessions
+            </button>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div class="modal-overlay" id="renameModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Rename Session</h3>
+                <button class="modal-close" onclick="closeRenameModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; display: block;">
+                        New Title
+                    </label>
+                    <input type="text" id="renameInput" placeholder="Enter new title..."
+                           style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary);
+                                  border: 1px solid var(--border); border-radius: 4px;
+                                  color: var(--text-primary); font-size: 13px;">
+                </div>
+                <p style="font-size: 11px; color: var(--text-secondary);">
+                    <i class="fas fa-info-circle"></i>
+                    This will add the title as a prefix to the first message (e.g., "Title\n\n" format)
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary" onclick="closeRenameModal()">Cancel</button>
+                <button class="primary" id="renameConfirmBtn" onclick="executeRename()">
+                    <i class="fas fa-check"></i> Rename
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clear Modal -->
+    <div class="modal-overlay" id="clearModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-broom"></i> Clear Sessions</h3>
+                <button class="modal-close" onclick="closeClearModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="clearModalBody">
+                <div class="loading"><i class="fas fa-spinner"></i> Scanning...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary" onclick="closeClearModal()">Cancel</button>
+                <button class="primary" id="clearConfirmBtn" onclick="executeClear()">
+                    <i class="fas fa-trash"></i> Clear Selected
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="content-header" id="contentHeader" style="display: none;">
+            <h2 id="sessionTitle">Select a conversation</h2>
+            <div class="header-actions">
+                <button id="renameBtn" title="Rename session" onclick="openRenameModal()">
+                    <i class="fas fa-edit"></i> Rename
+                </button>
+                <button id="copyBtn" title="Copy to clipboard">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+                <button id="deleteBtn" class="danger" title="Delete session">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+        <div class="messages-container" id="messagesContainer">
+            <div class="empty-state">
+                <i class="fas fa-comments"></i>
+                <p>Select a conversation to view</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let currentProject = null;
+        let currentSession = null;
+
+        // Load projects
+        async function loadProjects() {
+            const projectList = document.getElementById('projectList');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects`);
+                const projects = await response.json();
+
+                projectList.innerHTML = projects.map(project => `
+                    <div class="project-item" data-project="${project.name}">
+                        <div class="project-header" onclick="toggleProject('${project.name}')">
+                            <i class="fas fa-chevron-right"></i>
+                            <span class="project-name" title="${project.display_name}">${project.display_name}</span>
+                        </div>
+                        <div class="session-list" id="sessions-${project.name}"></div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                projectList.innerHTML = `<div class="empty-state"><p>Error loading projects</p></div>`;
+            }
+        }
+
+        // Toggle project
+        async function toggleProject(projectName) {
+            const projectItem = document.querySelector(`[data-project="${projectName}"]`);
+            const header = projectItem.querySelector('.project-header');
+            const sessionList = document.getElementById(`sessions-${projectName}`);
+
+            if (sessionList.classList.contains('visible')) {
+                sessionList.classList.remove('visible');
+                header.classList.remove('expanded');
+                return;
+            }
+
+            // Close other projects
+            document.querySelectorAll('.session-list.visible').forEach(el => {
+                el.classList.remove('visible');
+                el.previousElementSibling.classList.remove('expanded');
+            });
+
+            header.classList.add('expanded');
+            sessionList.classList.add('visible');
+            sessionList.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i> Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects/${projectName}/sessions`);
+                const sessions = await response.json();
+
+                if (sessions.length === 0) {
+                    sessionList.innerHTML = '<div class="session-item"><span class="session-title">No conversations</span></div>';
+                    return;
+                }
+
+                sessionList.innerHTML = sessions.map(session => `
+                    <div class="session-item"
+                         data-session="${session.session_id}"
+                         onclick="loadSession('${projectName}', '${session.session_id}')">
+                        <div class="session-title">${escapeHtml(session.title)}</div>
+                        <div class="session-meta">
+                            <span><i class="fas fa-comment"></i> ${session.message_count}</span>
+                            <span>${formatDate(session.updated_at)}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                sessionList.innerHTML = '<div class="session-item"><span class="session-title">Error loading sessions</span></div>';
+            }
+        }
+
+        // Load session
+        async function loadSession(projectName, sessionId) {
+            // Update active state
+            document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+            const sessionItem = document.querySelector(`[data-session="${sessionId}"]`);
+            if (sessionItem) sessionItem.classList.add('active');
+
+            currentProject = projectName;
+            currentSession = sessionId;
+
+            const container = document.getElementById('messagesContainer');
+            const header = document.getElementById('contentHeader');
+
+            container.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i> Loading messages...</div>';
+            header.style.display = 'flex';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects/${projectName}/sessions/${sessionId}`);
+                const session = await response.json();
+
+                document.getElementById('sessionTitle').textContent = session.title;
+
+                container.innerHTML = session.messages.map(msg => `
+                    <div class="message ${msg.role}">
+                        <div class="message-header">
+                            <span class="message-role ${msg.role}">${msg.role === 'user' ? 'User' : 'Claude'}</span>
+                            <span class="message-time">${formatDateTime(msg.timestamp)}</span>
+                            ${msg.model ? `<span class="message-model">${msg.model}</span>` : ''}
+                        </div>
+                        <div class="message-content">${escapeHtml(msg.content) || '<em>(empty)</em>'}</div>
+                        ${msg.tool_use ? `
+                            <div class="tool-use">
+                                <div class="tool-use-name"><i class="fas fa-wrench"></i> ${msg.tool_use.name}</div>
+                                <div class="tool-use-input">${escapeHtml(JSON.stringify(msg.tool_use.input, null, 2))}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                container.innerHTML = '<div class="empty-state"><p>Error loading messages</p></div>';
+            }
+        }
+
+        // Delete session
+        document.getElementById('deleteBtn').addEventListener('click', async () => {
+            if (!currentProject || !currentSession) return;
+
+            if (!confirm('Are you sure you want to delete this conversation?')) return;
+
+            try {
+                await fetch(`${API_BASE}/api/projects/${currentProject}/sessions/${currentSession}`, {
+                    method: 'DELETE'
+                });
+
+                // Update UI
+                const sessionItem = document.querySelector(`[data-session="${currentSession}"]`);
+                if (sessionItem) sessionItem.remove();
+
+                document.getElementById('messagesContainer').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Conversation deleted</p>
+                    </div>
+                `;
+                document.getElementById('contentHeader').style.display = 'none';
+
+                currentSession = null;
+            } catch (error) {
+                alert('Error deleting conversation');
+            }
+        });
+
+        // Copy
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const container = document.getElementById('messagesContainer');
+            const text = Array.from(container.querySelectorAll('.message')).map(msg => {
+                const role = msg.querySelector('.message-role').textContent;
+                const content = msg.querySelector('.message-content').textContent;
+                return `[${role}]\n${content}`;
+            }).join('\n\n---\n\n');
+
+            navigator.clipboard.writeText(text);
+            alert('Copied to clipboard!');
+        });
+
+        // Search
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length < 2) {
+                loadProjects();
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                const projectList = document.getElementById('projectList');
+                projectList.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i> Searching...</div>';
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
+                    const results = await response.json();
+
+                    if (results.length === 0) {
+                        projectList.innerHTML = '<div class="empty-state"><p>No results found</p></div>';
+                        return;
+                    }
+
+                    projectList.innerHTML = results.map(session => `
+                        <div class="session-item"
+                             data-session="${session.session_id}"
+                             onclick="loadSession('${session.project_path}', '${session.session_id}')">
+                            <div class="session-title">${escapeHtml(session.title)}</div>
+                            <div class="session-meta">
+                                <span><i class="fas fa-comment"></i> ${session.message_count}</span>
+                                <span>${formatDate(session.updated_at)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } catch (error) {
+                    projectList.innerHTML = '<div class="empty-state"><p>Search error</p></div>';
+                }
+            }, 300);
+        });
+
+        // Utility functions
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 86400000) { // within 24 hours
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            } else if (diff < 604800000) { // within 7 days
+                return date.toLocaleDateString('en-US', { weekday: 'short' });
+            }
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function formatDateTime(isoString) {
+            if (!isoString) return '';
+            return new Date(isoString).toLocaleString('en-US');
+        }
+
+        // Rename Modal functions
+        function openRenameModal() {
+            if (!currentProject || !currentSession) return;
+
+            const modal = document.getElementById('renameModal');
+            const input = document.getElementById('renameInput');
+            const currentTitle = document.getElementById('sessionTitle').textContent;
+
+            // Set current title as default
+            input.value = currentTitle;
+            modal.classList.add('visible');
+
+            // Focus on input
+            setTimeout(() => {
+                input.focus();
+                input.select();
+            }, 100);
+        }
+
+        function closeRenameModal() {
+            document.getElementById('renameModal').classList.remove('visible');
+        }
+
+        async function executeRename() {
+            if (!currentProject || !currentSession) return;
+
+            const input = document.getElementById('renameInput');
+            const newTitle = input.value.trim();
+
+            if (!newTitle) {
+                alert('Please enter a title');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects/${currentProject}/sessions/${currentSession}/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle })
+                });
+
+                if (response.ok) {
+                    // Update UI
+                    document.getElementById('sessionTitle').textContent = newTitle;
+
+                    // Update sidebar session list
+                    const sessionItem = document.querySelector(`[data-session="${currentSession}"]`);
+                    if (sessionItem) {
+                        const titleEl = sessionItem.querySelector('.session-title');
+                        if (titleEl) titleEl.textContent = newTitle;
+                    }
+
+                    closeRenameModal();
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to rename session');
+                }
+            } catch (error) {
+                alert('Error renaming session');
+            }
+        }
+
+        // Execute rename with Enter key
+        document.getElementById('renameInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                executeRename();
+            } else if (e.key === 'Escape') {
+                closeRenameModal();
+            }
+        });
+
+        // Close rename modal on outside click
+        document.getElementById('renameModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeRenameModal();
+            }
+        });
+
+        // Clear Modal functions
+        let clearData = null;
+
+        async function openClearModal() {
+            const modal = document.getElementById('clearModal');
+            const body = document.getElementById('clearModalBody');
+
+            modal.classList.add('visible');
+            body.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i> Scanning sessions...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/clear/preview`);
+                clearData = await response.json();
+
+                if (clearData.total_count === 0) {
+                    body.innerHTML = `
+                        <div class="empty-state" style="padding: 40px 0;">
+                            <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                            <p>No sessions to clear!</p>
+                        </div>
+                    `;
+                    document.getElementById('clearConfirmBtn').style.display = 'none';
+                    return;
+                }
+
+                document.getElementById('clearConfirmBtn').style.display = 'block';
+
+                body.innerHTML = `
+                    <div class="clear-option">
+                        <label>
+                            <input type="checkbox" id="clearEmpty" checked>
+                            Empty sessions <span class="clear-count">(${clearData.empty_sessions.length})</span>
+                        </label>
+                        <div class="clear-description">Sessions with no messages (0 bytes or no user/assistant content)</div>
+                    </div>
+                    <div class="clear-option">
+                        <label>
+                            <input type="checkbox" id="clearInvalidApiKey" checked>
+                            Invalid API key sessions <span class="clear-count">(${clearData.invalid_api_key_sessions.length})</span>
+                        </label>
+                        <div class="clear-description">Sessions with "Invalid API key" error and no actual messages</div>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 16px;">
+                        <i class="fas fa-info-circle"></i>
+                        Total: <strong>${clearData.total_count}</strong> sessions will be moved to .bak files
+                    </p>
+                `;
+            } catch (error) {
+                body.innerHTML = '<div class="empty-state"><p>Error scanning sessions</p></div>';
+            }
+        }
+
+        function closeClearModal() {
+            document.getElementById('clearModal').classList.remove('visible');
+            clearData = null;
+        }
+
+        async function executeClear() {
+            if (!clearData) return;
+
+            const clearEmpty = document.getElementById('clearEmpty')?.checked ?? true;
+            const clearInvalidApiKey = document.getElementById('clearInvalidApiKey')?.checked ?? true;
+
+            const body = document.getElementById('clearModalBody');
+            body.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i> Clearing sessions...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/clear`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        clear_empty: clearEmpty,
+                        clear_invalid_api_key: clearInvalidApiKey
+                    })
+                });
+
+                const result = await response.json();
+
+                body.innerHTML = `
+                    <div class="empty-state" style="padding: 40px 0;">
+                        <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                        <p>Cleared ${result.total_deleted} sessions!</p>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            Empty: ${result.empty_sessions.length}, Invalid API key: ${result.invalid_api_key_sessions.length}
+                        </p>
+                    </div>
+                `;
+
+                document.getElementById('clearConfirmBtn').style.display = 'none';
+
+                // Refresh project list
+                setTimeout(() => {
+                    loadProjects();
+                    closeClearModal();
+                }, 1500);
+
+            } catch (error) {
+                body.innerHTML = '<div class="empty-state"><p>Error clearing sessions</p></div>';
+            }
+        }
+
+        // Close modal on outside click
+        document.getElementById('clearModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeClearModal();
+            }
+        });
+
+        // Initialize
+        loadProjects();
+    </script>
+</body>
+</html>
