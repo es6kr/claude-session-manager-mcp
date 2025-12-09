@@ -28,13 +28,8 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0",
-]
-
-[project.optional-dependencies]
-web = [
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
-    "watchdog>=4.0.0",
 ]
 
 [project.scripts]

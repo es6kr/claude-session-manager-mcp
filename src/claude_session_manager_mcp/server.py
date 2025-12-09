@@ -2,9 +2,15 @@
 import json
 import os
 import re
+import subprocess
+import sys
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Global variable to track web server process
+_web_server_process: subprocess.Popen | None = None
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -350,6 +356,98 @@ def clear_sessions(project_name: str | None = None, clear_empty: bool = True, cl
     return deleted
 
 
+def start_web_gui(port: int = 5050, open_browser: bool = True) -> dict:
+    """Start the web GUI server."""
+    global _web_server_process
+
+    # Check if already running
+    if _web_server_process is not None and _web_server_process.poll() is None:
+        url = f"http://localhost:{port}"
+        if open_browser:
+            webbrowser.open(url)
+        return {
+            "success": True,
+            "message": "Web GUI is already running",
+            "url": url,
+            "pid": _web_server_process.pid
+        }
+
+    try:
+        # Get the package directory
+        package_dir = Path(__file__).parent.parent.parent
+
+        # Start Flask server as subprocess
+        _web_server_process = subprocess.Popen(
+            [sys.executable, "-m", "claude_session_manager_mcp.web"],
+            cwd=str(package_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+
+        # Wait briefly to check if it started successfully
+        import time
+        time.sleep(1)
+
+        if _web_server_process.poll() is not None:
+            # Process ended, get error
+            _, stderr = _web_server_process.communicate()
+            return {
+                "success": False,
+                "message": f"Failed to start web GUI: {stderr.decode()}"
+            }
+
+        url = f"http://localhost:{port}"
+        if open_browser:
+            webbrowser.open(url)
+
+        return {
+            "success": True,
+            "message": "Web GUI started successfully",
+            "url": url,
+            "pid": _web_server_process.pid
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to start web GUI: {str(e)}"
+        }
+
+
+def stop_web_gui() -> dict:
+    """Stop the web GUI server."""
+    global _web_server_process
+
+    if _web_server_process is None or _web_server_process.poll() is not None:
+        _web_server_process = None
+        return {
+            "success": True,
+            "message": "Web GUI is not running"
+        }
+
+    try:
+        _web_server_process.terminate()
+        _web_server_process.wait(timeout=5)
+        _web_server_process = None
+        return {
+            "success": True,
+            "message": "Web GUI stopped successfully"
+        }
+    except subprocess.TimeoutExpired:
+        _web_server_process.kill()
+        _web_server_process = None
+        return {
+            "success": True,
+            "message": "Web GUI forcefully stopped"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to stop web GUI: {str(e)}"
+        }
+
+
 # MCP Tool definitions
 @mcp.list_tools()
 async def list_tools() -> list[Tool]:
@@ -453,6 +551,33 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": []
             }
+        ),
+        Tool(
+            name="start_gui",
+            description="Start the web GUI for session management and open it in browser",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "port": {
+                        "type": "integer",
+                        "description": "Port to run the web server on (default: 5050)"
+                    },
+                    "open_browser": {
+                        "type": "boolean",
+                        "description": "Whether to open browser automatically (default: true)"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="stop_gui",
+            description="Stop the web GUI server",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
         )
     ]
 
@@ -491,6 +616,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         clear_empty = arguments.get("clear_empty", True)
         clear_invalid = arguments.get("clear_invalid", True)
         result = clear_sessions(project_name, clear_empty, clear_invalid)
+
+    elif name == "start_gui":
+        port = arguments.get("port", 5050)
+        open_browser = arguments.get("open_browser", True)
+        result = start_web_gui(port, open_browser)
+
+    elif name == "stop_gui":
+        result = stop_web_gui()
 
     else:
         result = {"error": f"Unknown tool: {name}"}
