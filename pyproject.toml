@@ -1,13 +1,14 @@
 [project]
 name = "claude-session-manager-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for managing Claude Code conversation sessions"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Willkomo Systems" }
+    { name = "drumrobot43@gmail.com" }
 ]
+repository = "https://github.com/es6kr/claude-session-manager-mcp"
 keywords = [
     "claude",
     "claude-code",
