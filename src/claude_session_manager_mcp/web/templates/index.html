@@ -246,6 +246,39 @@
             align-items: center;
             gap: 8px;
             margin-bottom: 8px;
+            position: relative;
+        }
+
+        .message-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .message-action-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s;
+        }
+
+        .message-action-btn:hover {
+            background: var(--error);
+            border-color: var(--error);
+            color: #fff;
         }
 
         .message-role {
@@ -735,11 +768,16 @@
                 document.getElementById('sessionTitle').textContent = session.title;
 
                 container.innerHTML = session.messages.map(msg => `
-                    <div class="message ${msg.role}">
+                    <div class="message ${msg.role}" data-uuid="${msg.uuid}">
                         <div class="message-header">
                             <span class="message-role ${msg.role}">${msg.role === 'user' ? 'User' : 'Claude'}</span>
                             <span class="message-time">${formatDateTime(msg.timestamp)}</span>
                             ${msg.model ? `<span class="message-model">${msg.model}</span>` : ''}
+                            <div class="message-actions">
+                                <button class="message-action-btn" onclick="deleteMessage('${msg.uuid}')" title="Delete this message">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="message-content">${escapeHtml(msg.content) || '<em>(empty)</em>'}</div>
                         ${msg.tool_use ? `
@@ -1051,6 +1089,34 @@
                 closeClearModal();
             }
         });
+
+        // Delete message
+        async function deleteMessage(messageUuid) {
+            if (!currentProject || !currentSession) return;
+
+            if (!confirm('Delete this message? The message chain will be automatically repaired.')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects/${currentProject}/sessions/${currentSession}/messages/${messageUuid}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    // Remove message from DOM
+                    const messageEl = document.querySelector(`[data-uuid="${messageUuid}"]`);
+                    if (messageEl) {
+                        messageEl.style.opacity = '0.5';
+                        messageEl.style.transition = 'opacity 0.3s';
+                        setTimeout(() => messageEl.remove(), 300);
+                    }
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to delete message');
+                }
+            } catch (error) {
+                alert('Error deleting message');
+            }
+        }
 
         // Initialize
         loadProjects();

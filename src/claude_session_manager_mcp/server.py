@@ -242,6 +242,76 @@ def rename_session(project_name: str, session_id: str, new_title: str) -> bool:
         return False
 
 
+def delete_message(project_name: str, session_id: str, message_uuid: str) -> bool:
+    """Delete a message from session and repair parentUuid chain."""
+    base_path = get_base_path()
+    project_path = base_path / project_name
+    jsonl_file = project_path / f"{session_id}.jsonl"
+
+    if not jsonl_file.exists():
+        return False
+
+    lines = []
+    deleted_uuid = None
+    parent_of_deleted = None
+
+    try:
+        # Read all lines and find the message to delete
+        with open(jsonl_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line_stripped = line.strip()
+                if not line_stripped:
+                    lines.append(line)
+                    continue
+
+                try:
+                    entry = json.loads(line_stripped)
+                    entry_uuid = entry.get('uuid')
+
+                    # Found the message to delete
+                    if entry_uuid == message_uuid:
+                        deleted_uuid = entry_uuid
+                        parent_of_deleted = entry.get('parentUuid')
+                        # Skip this line (don't add to lines)
+                        continue
+
+                    lines.append(line)
+                except json.JSONDecodeError:
+                    lines.append(line)
+
+        if deleted_uuid is None:
+            return False
+
+        # Repair parentUuid chain: find child of deleted message and update its parentUuid
+        repaired_lines = []
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                repaired_lines.append(line)
+                continue
+
+            try:
+                entry = json.loads(line_stripped)
+
+                # If this message's parent is the deleted message, update to deleted's parent
+                if entry.get('parentUuid') == deleted_uuid:
+                    entry['parentUuid'] = parent_of_deleted
+                    repaired_lines.append(json.dumps(entry, ensure_ascii=False) + '\n')
+                else:
+                    repaired_lines.append(line)
+            except json.JSONDecodeError:
+                repaired_lines.append(line)
+
+        # Write back to file
+        with open(jsonl_file, 'w', encoding='utf-8') as f:
+            f.writelines(repaired_lines)
+
+        return True
+
+    except Exception:
+        return False
+
+
 def check_session_status(file_path: Path) -> dict:
     """Check session file status."""
     status = {
@@ -517,6 +587,28 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="delete_message",
+            description="Delete a message from a session and repair the parentUuid chain",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Project folder name"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID"
+                    },
+                    "message_uuid": {
+                        "type": "string",
+                        "description": "UUID of the message to delete"
+                    }
+                },
+                "required": ["project_name", "session_id", "message_uuid"]
+            }
+        ),
+        Tool(
             name="preview_cleanup",
             description="Preview sessions that would be cleaned (empty and invalid API key sessions)",
             inputSchema={
@@ -606,6 +698,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         session_id = arguments.get("session_id", "")
         success = delete_session(project_name, session_id)
         result = {"success": success, "message": "Session deleted (backed up to .bak)" if success else "Failed to delete session"}
+
+    elif name == "delete_message":
+        project_name = arguments.get("project_name", "")
+        session_id = arguments.get("session_id", "")
+        message_uuid = arguments.get("message_uuid", "")
+        success = delete_message(project_name, session_id, message_uuid)
+        result = {"success": success, "message": "Message deleted and chain repaired" if success else "Failed to delete message"}
 
     elif name == "preview_cleanup":
         project_name = arguments.get("project_name")

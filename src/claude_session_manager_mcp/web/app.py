@@ -117,6 +117,17 @@ def rename_session(project_name: str, session_id: str):
         return jsonify({'error': 'Failed to rename session'}), 500
 
 
+@app.route('/api/projects/<path:project_name>/sessions/<session_id>/messages/<message_uuid>', methods=['DELETE'])
+def delete_message(project_name: str, session_id: str, message_uuid: str):
+    """Delete message API"""
+    success = parser.delete_message(project_name, session_id, message_uuid)
+
+    if success:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Failed to delete message'}), 500
+
+
 @app.route('/api/clear/preview')
 def clear_preview():
     """Preview cleanable sessions API"""

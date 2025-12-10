@@ -448,6 +448,75 @@ class ClaudeHistoryParser:
         result['total_count'] = len(result['empty_sessions']) + len(result['invalid_api_key_sessions'])
         return result
 
+    def delete_message(self, project_name: str, session_id: str, message_uuid: str) -> bool:
+        """Delete a message from session and repair parentUuid chain."""
+        project_path = self.base_path / project_name
+        jsonl_file = project_path / f"{session_id}.jsonl"
+
+        if not jsonl_file.exists():
+            return False
+
+        lines = []
+        deleted_uuid = None
+        parent_of_deleted = None
+
+        try:
+            # Read all lines and find the message to delete
+            with open(jsonl_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line_stripped = line.strip()
+                    if not line_stripped:
+                        lines.append(line)
+                        continue
+
+                    try:
+                        entry = json.loads(line_stripped)
+                        entry_uuid = entry.get('uuid')
+
+                        # Found the message to delete
+                        if entry_uuid == message_uuid:
+                            deleted_uuid = entry_uuid
+                            parent_of_deleted = entry.get('parentUuid')
+                            # Skip this line (don't add to lines)
+                            continue
+
+                        lines.append(line)
+                    except json.JSONDecodeError:
+                        lines.append(line)
+
+            if deleted_uuid is None:
+                return False
+
+            # Repair parentUuid chain: find child of deleted message and update its parentUuid
+            repaired_lines = []
+            for line in lines:
+                line_stripped = line.strip()
+                if not line_stripped:
+                    repaired_lines.append(line)
+                    continue
+
+                try:
+                    entry = json.loads(line_stripped)
+
+                    # If this message's parent is the deleted message, update to deleted's parent
+                    if entry.get('parentUuid') == deleted_uuid:
+                        entry['parentUuid'] = parent_of_deleted
+                        repaired_lines.append(json.dumps(entry, ensure_ascii=False) + '\n')
+                    else:
+                        repaired_lines.append(line)
+                except json.JSONDecodeError:
+                    repaired_lines.append(line)
+
+            # Write back to file
+            with open(jsonl_file, 'w', encoding='utf-8') as f:
+                f.writelines(repaired_lines)
+
+            return True
+
+        except Exception as e:
+            print(f"Error deleting message: {e}")
+            return False
+
     def clear_sessions(self, project_name: str = None, clear_empty: bool = True, clear_invalid_api_key: bool = True) -> dict:
         """Clear sessions (delete empty and Invalid API key sessions)."""
         cleanable = self.find_cleanable_sessions(project_name)
