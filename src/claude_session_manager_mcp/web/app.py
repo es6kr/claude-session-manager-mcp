@@ -12,15 +12,20 @@ parser = ClaudeHistoryParser()
 
 
 def get_version():
-    """Get version from pyproject.toml"""
+    """Get version from package metadata"""
     try:
-        pyproject_path = Path(__file__).parent.parent.parent.parent / "pyproject.toml"
-        with open(pyproject_path, 'r') as f:
-            for line in f:
-                if line.startswith('version = '):
-                    return line.split('=')[1].strip().strip('"').strip("'")
+        from importlib.metadata import version
+        return version('claude-session-manager-mcp')
     except:
-        pass
+        # Fallback to pyproject.toml
+        try:
+            pyproject_path = Path(__file__).parent.parent.parent.parent / "pyproject.toml"
+            with open(pyproject_path, 'r') as f:
+                for line in f:
+                    if line.startswith('version = '):
+                        return line.split('=')[1].strip().strip('"').strip("'")
+        except:
+            pass
     return "unknown"
 
 
