@@ -254,12 +254,17 @@ class ClaudeHistoryParser:
         return results
 
     def delete_session(self, project_name: str, session_id: str) -> bool:
-        """Delete session (move file to .bak folder)."""
+        """Delete session (move file to .bak folder, or delete if empty)."""
         project_path = self.base_path / project_name
         jsonl_file = project_path / f"{session_id}.jsonl"
 
         if not jsonl_file.exists():
             return False
+
+        # If file is empty (0 bytes), just delete it without backing up
+        if jsonl_file.stat().st_size == 0:
+            jsonl_file.unlink()
+            return True
 
         # Move to .bak folder (format: project_name_session_id.jsonl)
         backup_dir = self.base_path / ".bak"
@@ -365,6 +370,35 @@ class ClaudeHistoryParser:
             print(f"Error renaming session: {e}")
             return False
 
+    def move_session(self, source_project: str, session_id: str, target_project: str) -> bool:
+        """Move session to another project."""
+        source_path = self.base_path / source_project
+        target_path = self.base_path / target_project
+
+        source_file = source_path / f"{session_id}.jsonl"
+        target_file = target_path / f"{session_id}.jsonl"
+
+        if not source_file.exists():
+            print(f"Error moving session: Source file does not exist: {source_file}", flush=True)
+            return False
+
+        # Create target directory if it doesn't exist
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        # If target file already exists, fail
+        if target_file.exists():
+            print(f"Error moving session: Target file already exists: {target_file}", flush=True)
+            return False
+
+        try:
+            # Move file
+            source_file.rename(target_file)
+            print(f"Successfully moved session from {source_project} to {target_project}", flush=True)
+            return True
+        except Exception as e:
+            print(f"Error moving session: {e}", flush=True)
+            return False
+
     def _check_session_status(self, file_path: Path) -> dict:
         """Check session file status (empty session, Invalid API key, etc.)."""
         status = {
@@ -393,6 +427,10 @@ class ClaudeHistoryParser:
                             summary = entry.get('summary', '')
                             if 'Invalid API key' in summary:
                                 status['has_invalid_api_key'] = True
+                            else:
+                                # Summary가 있다는 것은 요약된 메시지가 있다는 의미
+                                status['is_empty'] = False
+                                status['has_messages'] = True
 
                         # If user/assistant message exists, not empty session
                         if entry_type in ('user', 'assistant'):

@@ -141,13 +141,18 @@ def parse_session_summary(file_path: Path) -> dict | None:
 
 
 def delete_session(project_name: str, session_id: str) -> bool:
-    """Delete a session (move to .bak folder)."""
+    """Delete a session (move to .bak folder, or delete if empty)."""
     base_path = get_base_path()
     project_path = base_path / project_name
     jsonl_file = project_path / f"{session_id}.jsonl"
 
     if not jsonl_file.exists():
         return False
+
+    # If file is empty (0 bytes), just delete it without backing up
+    if jsonl_file.stat().st_size == 0:
+        jsonl_file.unlink()
+        return True
 
     backup_dir = base_path / ".bak"
     backup_dir.mkdir(exist_ok=True)
@@ -338,6 +343,10 @@ def check_session_status(file_path: Path) -> dict:
                         summary = entry.get('summary', '')
                         if 'Invalid API key' in summary:
                             status['has_invalid_api_key'] = True
+                        else:
+                            # Summary가 있다는 것은 요약된 메시지가 있다는 의미
+                            status['is_empty'] = False
+                            status['has_messages'] = True
 
                     if entry_type in ('user', 'assistant'):
                         status['is_empty'] = False
