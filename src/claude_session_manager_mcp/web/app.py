@@ -1,5 +1,6 @@
 """Claude Code conversation history viewer web server"""
 import os
+from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from ..models import ClaudeHistoryParser
@@ -10,10 +11,29 @@ CORS(app)
 parser = ClaudeHistoryParser()
 
 
+def get_version():
+    """Get version from pyproject.toml"""
+    try:
+        pyproject_path = Path(__file__).parent.parent.parent.parent / "pyproject.toml"
+        with open(pyproject_path, 'r') as f:
+            for line in f:
+                if line.startswith('version = '):
+                    return line.split('=')[1].strip().strip('"').strip("'")
+    except:
+        pass
+    return "unknown"
+
+
 @app.route('/')
 def index():
     """Main page"""
     return render_template('index.html')
+
+
+@app.route('/api/version')
+def get_version_info():
+    """Get version API"""
+    return jsonify({'version': get_version()})
 
 
 @app.route('/api/projects')
