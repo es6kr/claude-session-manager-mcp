@@ -148,6 +148,23 @@ def clear_sessions():
     return jsonify(result)
 
 
+@app.route('/api/projects/<path:project_name>/sessions/<session_id>/move', methods=['POST'])
+def move_session(project_name: str, session_id: str):
+    """Move session to another project API"""
+    data = request.get_json() or {}
+    target_project = data.get('target_project', '').strip()
+
+    if not target_project:
+        return jsonify({'error': 'Target project is required'}), 400
+
+    success = parser.move_session(project_name, session_id, target_project)
+
+    if success:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Failed to move session'}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     app.run(host='0.0.0.0', port=port, debug=True)

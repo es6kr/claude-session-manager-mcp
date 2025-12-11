@@ -163,6 +163,16 @@
             border-left-color: var(--accent);
         }
 
+        .session-item.dragging {
+            opacity: 0.5;
+            cursor: move;
+        }
+
+        .project-header.drag-over {
+            background: var(--accent);
+            color: white;
+        }
+
         .session-title {
             font-size: 12px;
             color: var(--text-primary);
@@ -731,7 +741,9 @@
 
                 sessionList.innerHTML = sessions.map(session => `
                     <div class="session-item"
+                         draggable="true"
                          data-session="${session.session_id}"
+                         data-project="${projectName}"
                          onclick="loadSession('${projectName}', '${session.session_id}')">
                         <div class="session-title">${escapeHtml(session.title)}</div>
                         <div class="session-meta">
@@ -1118,8 +1130,100 @@
             }
         }
 
+        // Drag and Drop handlers
+        let draggedSession = null;
+        let draggedProject = null;
+
+        function setupDragAndDrop() {
+            // Add event listeners to all session items
+            document.addEventListener('dragstart', (e) => {
+                if (e.target.classList.contains('session-item')) {
+                    draggedSession = e.target.dataset.session;
+                    draggedProject = e.target.dataset.project;
+                    e.target.classList.add('dragging');
+                }
+            });
+
+            document.addEventListener('dragend', (e) => {
+                if (e.target.classList.contains('session-item')) {
+                    e.target.classList.remove('dragging');
+                    draggedSession = null;
+                    draggedProject = null;
+                }
+            });
+
+            // Handle drag over project headers
+            document.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (e.target.closest('.project-header')) {
+                    e.target.closest('.project-header').classList.add('drag-over');
+                }
+            });
+
+            document.addEventListener('dragleave', (e) => {
+                if (e.target.closest('.project-header')) {
+                    e.target.closest('.project-header').classList.remove('drag-over');
+                }
+            });
+
+            // Handle drop on project header
+            document.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                const projectHeader = e.target.closest('.project-header');
+                if (projectHeader) {
+                    projectHeader.classList.remove('drag-over');
+
+                    const targetProject = projectHeader.closest('.project-item').dataset.project;
+
+                    if (draggedSession && draggedProject && targetProject !== draggedProject) {
+                        await moveSession(draggedProject, draggedSession, targetProject);
+                    }
+                }
+            });
+        }
+
+        let movingSession = null;
+
+        async function moveSession(sourceProject, sessionId, targetProject) {
+            // Prevent moving the same session multiple times
+            if (movingSession === sessionId) {
+                return;
+            }
+
+            movingSession = sessionId;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/projects/${sourceProject}/sessions/${sessionId}/move`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ target_project: targetProject })
+                });
+
+                if (response.ok) {
+                    // Reload both projects
+                    await loadSessions(sourceProject);
+                    await loadSessions(targetProject);
+
+                    // If the moved session was active, load it from the new location
+                    if (currentSession === sessionId) {
+                        await loadSession(targetProject, sessionId);
+                    }
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to move session');
+                }
+            } catch (error) {
+                alert('Error moving session');
+            } finally {
+                movingSession = null;
+            }
+        }
+
         // Initialize
         loadProjects();
+        setupDragAndDrop();
     </script>
 </body>
 </html>
